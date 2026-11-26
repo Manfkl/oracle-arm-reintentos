@@ -60,7 +60,7 @@ for tamano in "${TAMANOS[@]}"; do
   if echo "$salida" | grep -qiE "Out of host capacity|Out of capacity|TooManyRequests|Too many requests|InternalError"; then
     echo "  Sin hueco para este tamaño."
     echo "$salida" | grep -iE '"message"' | head -1
-    sleep 5
+    sleep 30   # pausa para que Oracle no responda «Too many requests»
     continue
   fi
   echo "Error inesperado al crear la máquina:"
