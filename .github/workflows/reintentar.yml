@@ -67,10 +67,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IP: ${{ steps.crear.outputs.ip }}
+          TAMANO: ${{ steps.crear.outputs.tamano }}
         run: |
+          # La mención a @${{ github.repository_owner }} hace que GitHub te mande el aviso (correo y app).
           gh issue create --repo "$GITHUB_REPOSITORY" \
             --title "✅ Máquina ARM de Oracle creada (IP $IP)" \
-            --body "La máquina **bot-musica** (VM.Standard.A1.Flex) ya existe y está arrancada. IP pública: \`$IP\`. Los reintentos se han desactivado solos."
+            --body "@${{ github.repository_owner }} La máquina **bot-musica** (VM.Standard.A1.Flex, $TAMANO) ya existe y está arrancada. IP pública: \`$IP\`. Los reintentos se han desactivado solos."
 
       - name: Desactivar los reintentos
         if: steps.crear.outputs.creada == 'true' || steps.crear.outputs.ya_existe == 'true'

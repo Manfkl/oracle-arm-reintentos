@@ -4,7 +4,7 @@ Oracle Cloud a menudo responde «Out of capacity» al crear la máquina gratuita
 `VM.Standard.A1.Flex` (ARM). Este repositorio lo reintenta **cada 10 minutos con GitHub Actions**,
 así no hace falta tener el PC encendido.
 
-- Pide la máquina ARM gratuita (2 OCPU y 12 GB, dentro del plan *Always Free*).
+- Pide la máquina ARM gratuita: primero con 2 OCPU y 12 GB y, si no hay hueco, con 1 OCPU y 6 GB (las dos dentro del plan *Always Free*).
 - Cuando la consigue, **abre un issue con la IP pública** y se desactiva solo.
 - Si Oracle no tiene hueco, no pasa nada: lo vuelve a intentar en el siguiente turno.
 - Si aparece otro error, el workflow falla y GitHub te avisa por correo.

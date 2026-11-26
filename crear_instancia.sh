@@ -12,8 +12,10 @@ set -uo pipefail
 
 NOMBRE="bot-musica"
 FORMA="VM.Standard.A1.Flex"
-OCPUS="${OCPUS:-2}"         # 2 OCPU y 12 GB = todo el cupo gratuito de ARM
-MEMORIA_GB="${MEMORIA_GB:-12}"
+# Tamaños que se prueban, en orden: primero todo el cupo gratuito (2 OCPU, 12 GB)
+# y, si no hay hueco, la mitad (1 OCPU, 6 GB), que es más fácil de conseguir
+# y al bot le sobra. Los dos son gratis.
+TAMANOS=("2 12" "1 6")
 
 oci() { command oci "$@"; }
 
@@ -34,34 +36,45 @@ IMAGEN=$(oci compute image list -c "$OCI_TENANCY" --operating-system "Canonical 
 echo "Dominio: $AD"
 echo "Imagen:  $IMAGEN"
 
-# 3. Intentar crearla.
+# 3. Intentar crearla con cada tamaño, de mayor a menor.
 echo "{\"ssh_authorized_keys\": \"$SSH_PUBLICA\"}" > metadata.json
-salida=$(oci compute instance launch \
-  --compartment-id "$OCI_TENANCY" \
-  --availability-domain "$AD" \
-  --display-name "$NOMBRE" \
-  --shape "$FORMA" \
-  --shape-config "{\"ocpus\": $OCPUS, \"memoryInGBs\": $MEMORIA_GB}" \
-  --image-id "$IMAGEN" \
-  --subnet-id "$OCI_SUBNET" \
-  --assign-public-ip true \
-  --metadata file://metadata.json \
-  --query 'data.id' --raw-output 2>&1)
-codigo=$?
-
-if [ $codigo -ne 0 ]; then
+ID=""
+for tamano in "${TAMANOS[@]}"; do
+  read -r OCPUS MEMORIA_GB <<< "$tamano"
+  echo "Probando $OCPUS OCPU y $MEMORIA_GB GB…"
+  salida=$(oci compute instance launch \
+    --compartment-id "$OCI_TENANCY" \
+    --availability-domain "$AD" \
+    --display-name "$NOMBRE" \
+    --shape "$FORMA" \
+    --shape-config "{\"ocpus\": $OCPUS, \"memoryInGBs\": $MEMORIA_GB}" \
+    --image-id "$IMAGEN" \
+    --subnet-id "$OCI_SUBNET" \
+    --assign-public-ip true \
+    --metadata file://metadata.json \
+    --query 'data.id' --raw-output 2>&1)
+  if [ $? -eq 0 ]; then
+    ID="$salida"
+    break
+  fi
   if echo "$salida" | grep -qiE "Out of host capacity|Out of capacity|TooManyRequests|Too many requests|InternalError"; then
-    echo "Oracle no tiene hueco ahora mismo. Se reintentará en el próximo turno."
-    echo "$salida" | grep -iE '"message"|"code"' | head -3
-    exit 0
+    echo "  Sin hueco para este tamaño."
+    echo "$salida" | grep -iE '"message"' | head -1
+    sleep 5
+    continue
   fi
   echo "Error inesperado al crear la máquina:"
   echo "$salida"
   exit 1
+done
+
+if [ -z "$ID" ]; then
+  echo "Oracle no tiene hueco ahora mismo. Se reintentará en el próximo turno."
+  exit 0
 fi
 
-ID="$salida"
-echo "¡Máquina creada! ID: $ID"
+echo "¡Máquina creada con $OCPUS OCPU y $MEMORIA_GB GB! ID: $ID"
+echo "tamano=$OCPUS OCPU y $MEMORIA_GB GB" >> "$GITHUB_OUTPUT"
 
 # 4. Esperar a que arranque y leer la IP pública.
 oci compute instance get --instance-id "$ID" --wait-for-state RUNNING --max-wait-seconds 600 > /dev/null || true
