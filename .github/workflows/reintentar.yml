@@ -1,0 +1,79 @@
+# Reintenta cada 10 minutos crear la máquina ARM gratuita de Oracle Cloud.
+# Cuando lo consigue, abre un issue con la IP y se desactiva solo.
+name: Crear máquina ARM en Oracle
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # cada 10 minutos (GitHub a veces se retrasa un poco)
+  workflow_dispatch:          # botón «Run workflow» para lanzarlo a mano
+
+permissions:
+  actions: write   # para desactivar este workflow al terminar
+  issues: write    # para abrir el issue con la IP
+
+concurrency:
+  group: crear-maquina
+  cancel-in-progress: false
+
+jobs:
+  intentar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requisitos.txt
+
+      - name: Instalar la CLI de Oracle
+        run: pip install -q -r requisitos.txt
+
+      - name: Configurar la cuenta de Oracle (desde los secrets)
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_KEY }}
+        run: |
+          mkdir -p ~/.oci
+          printf '%s\n' "$OCI_KEY" > ~/.oci/clave.pem
+          chmod 600 ~/.oci/clave.pem
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=$OCI_USER
+          fingerprint=$OCI_FINGERPRINT
+          tenancy=$OCI_TENANCY
+          region=$OCI_REGION
+          key_file=~/.oci/clave.pem
+          EOF
+          chmod 600 ~/.oci/config
+
+      - name: Intentar crear la máquina
+        id: crear
+        env:
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_SUBNET: ${{ secrets.OCI_SUBNET }}
+          SSH_PUBLICA: ${{ secrets.SSH_PUBLICA }}
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
+          SUPPRESS_LABEL_WARNING: "True"
+        run: bash crear_instancia.sh
+
+      - name: Avisar con un issue
+        if: steps.crear.outputs.creada == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IP: ${{ steps.crear.outputs.ip }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "✅ Máquina ARM de Oracle creada (IP $IP)" \
+            --body "La máquina **bot-musica** (VM.Standard.A1.Flex) ya existe y está arrancada. IP pública: \`$IP\`. Los reintentos se han desactivado solos."
+
+      - name: Desactivar los reintentos
+        if: steps.crear.outputs.creada == 'true' || steps.crear.outputs.ya_existe == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow disable reintentar.yml --repo "$GITHUB_REPOSITORY"
