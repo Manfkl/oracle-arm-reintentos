@@ -76,6 +76,14 @@ jobs:
             --title "✅ Máquina ARM de Oracle creada (IP $IP)" \
             --body "@${{ github.repository_owner }} La máquina **bot-musica** (VM.Standard.A1.Flex, $TAMANO) ya existe y está arrancada. IP pública: \`$IP\`. Los reintentos se han desactivado solos."
 
+      - name: Lanzar la siguiente ejecución (si aún no hay máquina)
+        # GitHub no siempre respeta el horario programado, así que cada ejecución
+        # lanza la siguiente al terminar. Así los intentos no se paran nunca.
+        if: steps.crear.outputs.creada != 'true' && steps.crear.outputs.ya_existe != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run reintentar.yml --repo "$GITHUB_REPOSITORY" --ref main
+
       - name: Desactivar los reintentos
         if: steps.crear.outputs.creada == 'true' || steps.crear.outputs.ya_existe == 'true'
         env:

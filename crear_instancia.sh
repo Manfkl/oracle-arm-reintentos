@@ -37,7 +37,7 @@ echo "Dominio: $AD"
 echo "Imagen:  $IMAGEN"
 
 # 3. Intentar crearla una y otra vez hasta que pase DURACION_MIN (unas 5,5 horas).
-#    En cada vuelta prueba los dos tamaños, con un minuto de pausa entre llamadas
+#    En cada vuelta prueba los dos tamaños, con minuto y medio de pausa entre llamadas
 #    para que Oracle no responda «Too many requests».
 #    --no-retry: que la CLI no reintente por su cuenta (lo controlamos nosotros).
 echo "{\"ssh_authorized_keys\": \"$SSH_PUBLICA\"}" > metadata.json
@@ -57,7 +57,7 @@ while [ -z "$ID" ] && [ "$(date +%s)" -lt "$fin" ]; do
     if echo "$salida" | grep -qiE "Out of host capacity|Out of capacity|TooManyRequests|Too many requests|InternalError|ServiceUnavailable"; then
       motivo=$(echo "$salida" | grep -oiE "Out of host capacity|Too many requests" | head -1)
       echo "$(date +%H:%M) intento $intentos ($OCPUS OCPU, $MEMORIA_GB GB): ${motivo:-sin hueco}"
-      sleep 60
+      sleep 90   # con 60 s, la mitad de las veces Oracle respondía «Too many requests»
       continue
     fi
     echo "Error inesperado al crear la máquina:"
