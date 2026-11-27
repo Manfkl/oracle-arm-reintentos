@@ -1,10 +1,12 @@
-# Reintenta cada 10 minutos crear la máquina ARM gratuita de Oracle Cloud.
+# Reintenta crear la máquina ARM gratuita de Oracle Cloud.
+# Cada ejecución se queda unas 5,5 horas probando (una vez por minuto), porque
+# GitHub no garantiza lanzar a tiempo los workflows programados.
 # Cuando lo consigue, abre un issue con la IP y se desactiva solo.
 name: Crear máquina ARM en Oracle
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # cada 10 minutos (GitHub a veces se retrasa un poco)
+    - cron: "17 * * * *"   # cada hora, por si una ejecución se corta; solo corre una a la vez
   workflow_dispatch:          # botón «Run workflow» para lanzarlo a mano
 
 permissions:
@@ -18,7 +20,7 @@ concurrency:
 jobs:
   intentar:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 350   # máximo de GitHub: 6 horas
     steps:
       - uses: actions/checkout@v4
 

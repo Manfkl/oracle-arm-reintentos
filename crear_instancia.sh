@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Intenta crear la máquina ARM gratuita de Oracle (VM.Standard.A1.Flex).
 #
-# Lo ejecuta GitHub Actions cada 10 minutos. Posibles resultados:
+# Lo ejecuta GitHub Actions: cada ejecución reintenta durante unas 5,5 horas, una vez por minuto. Posibles resultados:
 #   - Ya existe la máquina      -> avisa y desactiva el workflow.
-#   - Oracle no tiene hueco     -> termina bien (exit 0) y se reintenta en el siguiente turno.
+#   - Oracle no tiene hueco     -> sigue probando hasta que se acaba el tiempo de la ejecución.
 #   - Se ha creado              -> espera la IP pública, abre un issue con ella y desactiva el workflow.
 #   - Cualquier otro error      -> falla (exit 1) y GitHub te manda un correo.
 #
@@ -36,40 +36,38 @@ IMAGEN=$(oci compute image list -c "$OCI_TENANCY" --operating-system "Canonical 
 echo "Dominio: $AD"
 echo "Imagen:  $IMAGEN"
 
-# 3. Intentar crearla con cada tamaño, de mayor a menor.
+# 3. Intentar crearla una y otra vez hasta que pase DURACION_MIN (unas 5,5 horas).
+#    En cada vuelta prueba los dos tamaños, con un minuto de pausa entre llamadas
+#    para que Oracle no responda «Too many requests».
+#    --no-retry: que la CLI no reintente por su cuenta (lo controlamos nosotros).
 echo "{\"ssh_authorized_keys\": \"$SSH_PUBLICA\"}" > metadata.json
+DURACION_MIN="${DURACION_MIN:-330}"
+fin=$(( $(date +%s) + DURACION_MIN * 60 ))
 ID=""
-for tamano in "${TAMANOS[@]}"; do
-  read -r OCPUS MEMORIA_GB <<< "$tamano"
-  echo "Probando $OCPUS OCPU y $MEMORIA_GB GB…"
-  salida=$(oci compute instance launch \
-    --compartment-id "$OCI_TENANCY" \
-    --availability-domain "$AD" \
-    --display-name "$NOMBRE" \
-    --shape "$FORMA" \
-    --shape-config "{\"ocpus\": $OCPUS, \"memoryInGBs\": $MEMORIA_GB}" \
-    --image-id "$IMAGEN" \
-    --subnet-id "$OCI_SUBNET" \
-    --assign-public-ip true \
-    --metadata file://metadata.json \
-    --query 'data.id' --raw-output 2>&1)
-  if [ $? -eq 0 ]; then
-    ID="$salida"
-    break
-  fi
-  if echo "$salida" | grep -qiE "Out of host capacity|Out of capacity|TooManyRequests|Too many requests|InternalError"; then
-    echo "  Sin hueco para este tamaño."
-    echo "$salida" | grep -iE '"message"' | head -1
-    sleep 30   # pausa para que Oracle no responda «Too many requests»
-    continue
-  fi
-  echo "Error inesperado al crear la máquina:"
-  echo "$salida"
-  exit 1
+intentos=0
+while [ -z "$ID" ] && [ "$(date +%s)" -lt "$fin" ]; do
+  for tamano in "${TAMANOS[@]}"; do
+    read -r OCPUS MEMORIA_GB <<< "$tamano"
+    intentos=$((intentos + 1))
+    salida=$(oci compute instance launch --no-retry       --compartment-id "$OCI_TENANCY"       --availability-domain "$AD"       --display-name "$NOMBRE"       --shape "$FORMA"       --shape-config "{\"ocpus\": $OCPUS, \"memoryInGBs\": $MEMORIA_GB}"       --image-id "$IMAGEN"       --subnet-id "$OCI_SUBNET"       --assign-public-ip true       --metadata file://metadata.json       --query 'data.id' --raw-output 2>&1)
+    if [ $? -eq 0 ]; then
+      ID="$salida"
+      break
+    fi
+    if echo "$salida" | grep -qiE "Out of host capacity|Out of capacity|TooManyRequests|Too many requests|InternalError|ServiceUnavailable"; then
+      motivo=$(echo "$salida" | grep -oiE "Out of host capacity|Too many requests" | head -1)
+      echo "$(date +%H:%M) intento $intentos ($OCPUS OCPU, $MEMORIA_GB GB): ${motivo:-sin hueco}"
+      sleep 60
+      continue
+    fi
+    echo "Error inesperado al crear la máquina:"
+    echo "$salida"
+    exit 1
+  done
 done
 
 if [ -z "$ID" ]; then
-  echo "Oracle no tiene hueco ahora mismo. Se reintentará en el próximo turno."
+  echo "Sin hueco tras $intentos intentos. La siguiente ejecución seguirá probando."
   exit 0
 fi
 

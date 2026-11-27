@@ -1,7 +1,7 @@
 # Reintentos para crear la máquina ARM gratuita de Oracle
 
 Oracle Cloud a menudo responde «Out of capacity» al crear la máquina gratuita
-`VM.Standard.A1.Flex` (ARM). Este repositorio lo reintenta **cada 10 minutos con GitHub Actions**,
+`VM.Standard.A1.Flex` (ARM). Este repositorio lo reintenta **una vez por minuto con GitHub Actions** (cada ejecución dura unas 5,5 horas y se lanza otra cada hora),
 así no hace falta tener el PC encendido.
 
 - Pide la máquina ARM gratuita: primero con 2 OCPU y 12 GB y, si no hay hueco, con 1 OCPU y 6 GB (las dos dentro del plan *Always Free*).
